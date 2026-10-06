@@ -173,3 +173,49 @@ I also added `pyproject.toml` (`numpy` as the only runtime dependency, pytest
 `pythonpath = ["."]`) so `pytest` runs from the repo root.
 
 **Commit:** `test: gradient checks vs numerical gradients`
+
+### Day 5 (Friday) — train on real MNIST, hit the target, plot the curve
+
+**Goal:** ≥ 95% test accuracy on MNIST in under 30 seconds on a CPU, using only my engine.
+
+**`examples/train_mnist.py`:** loads MNIST (tries Keras, falls back to
+`sklearn.fetch_openml("mnist_784")`), scales pixels to [0, 1], builds
+`MLP([784, 128, 10])` (101,770 parameters), and trains with Adam (lr 1e-3),
+batches of 128, 3 epochs, a fresh shuffle each epoch. Each step is the full loop:
+`zero_grad → forward → fused softmax-xent → backward → Adam step`. I added per-batch
+loss logging so the script saves `docs/loss_curve.png`. The clock starts **after**
+loading the data — the download is not training time.
+
+```text
+$ PYTHONPATH=. python examples/train_mnist.py
+loaded MNIST: train (60000, 784), test (10000, 784) in 29.7s (not counted in training time)
+epoch 0 test acc 0.9457
+epoch 1 test acc 0.9613
+epoch 2 test acc 0.9685
+
+FINAL: 0.9685 test accuracy in 6.0s
+wrote docs/loss_curve.png
+PASS
+```
+**96.85% in 6.0 s** — the target was ≥ 95% in < 30 s. A second run gave the identical
+96.85% in 6.1 s (everything is seeded, so results are reproducible; the 6 s even
+includes the three per-epoch test-set evaluations). The 29.7 s on the first run is
+OpenML's download/parse; it dropped to 10.8 s once cached.
+
+![MNIST loss curve](docs/loss_curve.png)
+
+How to read the curve: the loss starts at ≈ 2.3 — exactly the dashed line,
+`ln(10)`, the loss of guessing uniformly over 10 classes, which is what a freshly
+initialized network does. It falls below 0.5 within ~60 steps (≈ 7,700 images, an
+eighth of one epoch) and then slowly works down toward ~0.1. Vertical lines mark
+epoch boundaries.
+
+**Offline fallback — `examples/train_digits.py`:** the same engine on scikit-learn's
+bundled 8×8 digits (no download), `MLP([64, 128, 10])`, 30 epochs:
+```text
+digits 8x8: 1347 train / 450 test, test accuracy 0.9733 in 0.30s
+```
+(The guide reports 98.7% in 0.30 s for this setup; my split/epoch settings give
+97.3% — same speed, close accuracy. I'm reporting the number I measured.)
+
+**Commit:** `feat: MNIST training to >=95% in <30s + loss curve`
