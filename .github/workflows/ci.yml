@@ -16,7 +16,7 @@ jobs:
           python-version: "3.12"   # PyO3 0.20 supports CPython <= 3.12
       - name: Build + install the wheel
         run: |
-          python -m pip install --upgrade pip maturin
+          python -m pip install --upgrade pip maturin tiktoken
           maturin build --release
           pip install target/wheels/*.whl
       - name: Smoke test + offline benchmark

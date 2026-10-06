@@ -358,7 +358,7 @@ pip install -i https://test.pypi.org/simple/ blazetok
    wheels for other platforms/versions with `maturin-action` in CI, or switch to
    PyO3's `abi3` feature so one wheel covers every Python ≥ 3.8.
 5. **Blog post:** [`docs/blog.md`](docs/blog.md) — "BPE in Rust: lost on English, won on
-   Tamil" (~340 words), including the inflated-vs-honest caveat.
+   Tamil" (~330 words), including the inflated-vs-honest caveat.
 
 **Commit:** `docs: blog post, CI, release build verified`
 
