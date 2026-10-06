@@ -7,7 +7,34 @@ ids and back. blazetok implements Byte-Pair Encoding (the family GPT and Claude
 use) from scratch in Rust, exposes it to Python with PyO3/maturin, and measures
 how many fewer tokens an Indic-trained BPE needs for Hindi and Tamil.
 
+[![ci](https://github.com/kashyapphassan2000-netizen/blazetok/actions/workflows/ci.yml/badge.svg)](https://github.com/kashyapphassan2000-netizen/blazetok/actions/workflows/ci.yml)
+
 Stack: Rust (2021 edition), PyO3 0.20, maturin, cargo test, Python 3.12. Cost: $0.
+
+## Quickstart
+
+```bash
+cargo test                                         # 7 tests: hand-trace + 6 round-trips
+pip install maturin tiktoken
+maturin build --release && pip install target/wheels/*.whl
+python -c 'import blazetok; t=blazetok.Tokenizer(); t.train("low lower lowest "*50, 300); print(t.encode("lowest"))'
+cd bench && python compare_tiktoken.py             # needs internet once (tiktoken vocab)
+cd bench && python compare_offline.py              # fully offline
+cargo run --release --example train -- corpus.txt 4000
+```
+
+## Headline results (measured)
+
+| text | blazetok tok/char | tiktoken cl100k tok/char | cl100k uses |
+|---|---|---|---|
+| Hindi, word-bank sample (in-distribution) | 0.133 | 1.020 | 7.66x more |
+| Tamil, word-bank sample (in-distribution) | 0.112 | 1.369 | 12.27x more |
+| English, word-bank sample (in-distribution) | 0.110 | 0.202 | 1.84x more ← shows the inflation |
+| **Hindi, held-out sentences** | 45 tokens | 60 tokens | **1.33x more** |
+| **Tamil, held-out sentences** | 43 tokens | 80 tokens | **1.86x more** |
+
+The bold rows are the honest numbers; see Day 5 for why the top rows are inflated.
+
 
 ---
 
@@ -308,3 +335,56 @@ distinct words, so after ~1600 merges no pair appears twice. That early exit is 
 feature — it never invents useless tokens.
 
 **Commit:** `feat: NFC note + train CLI example`
+
+### Day 7 (Sunday) — release build, clean-install check, blog post
+
+1. **Build the distributable wheel:** `maturin build --release` →
+   `target/wheels/blazetok-0.1.0-cp312-cp312-manylinux_2_34_x86_64.whl`.
+2. **Verify a clean install** in a brand-new venv, run from `/tmp`:
+```text
+$ python -m venv /tmp/fresh && /tmp/fresh/bin/pip install target/wheels/*.whl
+$ /tmp/fresh/bin/python -c 'import blazetok; t=blazetok.Tokenizer(); print("ok")'
+ok
+```
+3. **CI — `.github/workflows/ci.yml`:** on every push/PR: `cargo test` (pure Rust),
+   then build the wheel with maturin on Python 3.12, install it, smoke-test the import,
+   and run the offline benchmark.
+4. **Upload to TestPyPI** — needs your TestPyPI API token, so not executed here:
+```bash
+maturin upload --repository testpypi target/wheels/*.whl
+pip install -i https://test.pypi.org/simple/ blazetok
+```
+   Note: this uploads a Linux/CPython-3.12-only wheel. For a real release, build
+   wheels for other platforms/versions with `maturin-action` in CI, or switch to
+   PyO3's `abi3` feature so one wheel covers every Python ≥ 3.8.
+5. **Blog post:** [`docs/blog.md`](docs/blog.md) — "BPE in Rust: lost on English, won on
+   Tamil" (~340 words), including the inflated-vs-honest caveat.
+
+**Commit:** `docs: blog post, CI, release build verified`
+
+---
+
+## Done check — Week 2
+
+- [x] `cargo test` shows 6 passing round-trip tests (+1 hand-trace test)
+- [x] `maturin build` produces a wheel; `pip install` works; `import blazetok` works in a fresh venv
+- [x] the benchmark prints real tok/char numbers for Hindi and Tamil
+- [x] ~7 day-by-day commits; README has the honest result
+- [ ] TestPyPI upload (needs your token)
+
+## If something breaks
+
+- **`linker 'cc' not found`** — `sudo apt-get install build-essential python3-dev`.
+- **PyO3 build error about Python 3.13** — PyO3 0.20 supports ≤ 3.12; use a 3.12 venv
+  (or set `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1`, or upgrade PyO3).
+- **"not a supported wheel on this platform"** — you're using a different Python's pip than the one the wheel was built for.
+- **`ImportError` after install** — the `#[pymodule] fn blazetok`, `[lib] name` and project name must all be `blazetok`.
+- **tiktoken 403 / network error** — it downloads its vocab on first run; use `compare_offline.py`.
+
+## What I can now answer in an interview
+
+- What a tokenizer does and where it sits in an LLM pipeline.
+- BPE end to end — including why the tie-break rule is part of the spec.
+- Why byte-level tokenizers have no unknown token, and the UTF-8 reason Indian languages cost more.
+- How PyO3 + maturin expose Rust to Python, and the Python-version/wheel-tag gotchas.
+- How to benchmark a tokenizer honestly (tok/char, held-out text) and spot an inflated result.
