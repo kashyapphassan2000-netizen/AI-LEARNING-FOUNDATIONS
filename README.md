@@ -109,3 +109,69 @@ $ pytest tests/test_core.py -q
 ```
 
 **Commit:** `feat: Matrix + naive matmul, benchmarked vs NumPy`
+
+### Day 3 (Wednesday) — Strassen + an honest benchmark
+
+**Goal:** test a textbook claim against reality. Strassen does **7** recursive
+half-size multiplies instead of 8, so its complexity drops from O(n³) to
+O(n^log₂7) ≈ O(n^2.807). The textbook says it should win early. Does it, in Python?
+
+**How Strassen works (re-reading the Day-2 code):**
+1. `strassen()` pads both matrices with zeros up to the next power of two (`_pad`),
+   because the algorithm splits in halves recursively.
+2. `_strassen()` splits A and B into four quadrants each (`a11…a22`, `b11…b22`).
+3. It forms the seven products `m1…m7` (each one a recursive call on sums/differences
+   of quadrants) and rebuilds the four output quadrants from them:
+   `c11 = m1 + m4 − m5 + m7`, `c12 = m3 + m5`, `c21 = m2 + m4`, `c22 = m1 − m2 + m3 + m6`.
+4. Below `leaf` size it stops recursing and falls back to `_naive` — recursion on tiny
+   blocks costs more in additions and list slicing than it saves in multiplies.
+5. Finally it crops the padding off.
+
+**What I wrote — `bench/matmul.py`:** a CLI (`--sizes`, `--algo`, `--leaf`) that times
+`A.matmul(B)` vs `A.strassen(B, leaf=…)` on random matrices with `time.perf_counter()`
+and prints a table with the winner.
+
+**Real results on this machine** (`python bench/matmul.py --sizes 128,256,512 --leaf 32`):
+```text
+     n |    naive (s) |   strassen (s) | winner
+----------------------------------------------------
+   128 |       0.1528 |         0.1071 | strassen
+   256 |       0.8114 |         0.8384 | naive
+   512 |       9.2600 |         5.5680 | strassen
+```
+That first table contradicts itself (Strassen wins at 128, loses at 256), so I did
+not trust a single run. I repeated n = 128/256 three more times:
+```text
+   128 |       0.0934 |         0.1099 | naive
+   256 |       0.8378 |         0.7689 | strassen
+   128 |       0.0972 |         0.1096 | naive
+   256 |       0.8244 |         0.7791 | strassen
+   128 |       0.1364 |         0.1106 | strassen     <- naive had a noisy spike
+   256 |       0.8361 |         0.7702 | strassen
+```
+and once with `--leaf 64`:
+```text
+   128 |       0.0998 |         0.1078 | naive
+   256 |       0.8960 |         0.8348 | strassen
+   512 |       9.3361 |         5.6670 | strassen
+```
+
+**Honest conclusion:** at n = 128 the two are within noise and naive usually wins;
+**Strassen reliably wins from n ≈ 256**, and at n = 512 it is **~1.65x faster**
+(5.6 s vs 9.3 s). The crossover sits higher than the textbook's estimate because in
+pure Python every one of Strassen's extra matrix additions and list slices runs
+through the interpreter, inflating the constant factor that the asymptotic
+argument ignores. And all of this is still ~700x slower than NumPy — algorithmic
+cleverness does not beat a C/BLAS implementation of the dumb algorithm.
+
+**Cross-check test:** `test_strassen_matches_naive` multiplies two random 130×130
+matrices (deliberately *not* a power of two, to exercise padding) and asserts the
+result matches NumPy with `np.allclose(..., atol=1e-6)` — not `==`, because Strassen
+reorders floating-point additions and float addition is not associative.
+```text
+$ pytest -q
+........                                                                 [100%]
+8 passed
+```
+
+**Commit:** `feat: Strassen matmul + honest crossover benchmark`

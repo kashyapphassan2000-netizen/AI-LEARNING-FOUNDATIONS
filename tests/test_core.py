@@ -43,3 +43,10 @@ def test_transpose():
 
 def test_identity():
     assert Matrix.identity(3).to_list() == np.eye(3).tolist()
+
+
+def test_strassen_matches_naive():
+    rng = np.random.default_rng(0)
+    A = rng.standard_normal((130, 130)); B = rng.standard_normal((130, 130))
+    got = Matrix(A.tolist()).strassen(Matrix(B.tolist()), leaf=32).to_list()
+    assert np.allclose(got, A @ B, atol=1e-6)
