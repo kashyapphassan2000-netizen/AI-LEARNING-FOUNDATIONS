@@ -175,3 +175,63 @@ $ pytest -q
 ```
 
 **Commit:** `feat: Strassen matmul + honest crossover benchmark`
+
+### Day 4 (Thursday) — reverse-mode autograd + an MLP that learns XOR
+
+**Goal:** the heart of the week. After this, PyTorch's `loss.backward()` stops being magic.
+
+**What I wrote — `tiny_vec/engine.py` (`Value`):**
+- Each `Value` stores `data`, `grad`, the set of parent nodes `_prev`, the op name
+  `_op`, and a `_backward` closure. When an op creates an output node it also
+  defines *how to push gradient from that output back into its inputs*.
+- The key line, in `__mul__`: `self.grad += other.data * out.grad`. That **is** the
+  chain rule — "gradient arriving at me × my local derivative (d(a·b)/da = b)".
+- Why `+=` and not `=`: a value used twice in a graph (e.g. `a` in `a*b + a**2`) must
+  **sum** the gradient from both paths. With `=` the second path would overwrite the first.
+- Ops: `+`, `*`, `**` (constant power), `relu`, `tanh` (local derivative `1 − t²`),
+  `exp`; plus sugar (`-x`, `x - y`, `1 - x`, `2 * x`, `/`) built from those primitives
+  so they automatically get correct gradients.
+- `backward()`: a depth-first **topological sort** (every node appears after all of
+  its inputs), set the output's grad to 1.0, then call each node's `_backward` in
+  reverse order — so a node is only processed once every consumer has deposited
+  its gradient into it.
+
+**What I wrote — `tiny_vec/nn.py`:** `Module` (with `parameters()` and `zero_grad()`),
+`Neuron` (weights ~ U(−1, 1), bias 0, `tanh(w·x + b)`), `Layer` (a list of neurons),
+`MLP` (stacked layers; the **last layer is linear**, all others use tanh).
+
+**What I wrote — `examples/train_xor.py`:** an `MLP(2, [8, 8, 1])` (105 parameters)
+trained with plain SGD, lr = 0.05, on mean-squared error over the 4 XOR points.
+XOR is the smallest problem that is *not linearly separable*, so it can only be
+solved if the hidden layer and backprop actually work.
+
+```text
+$ PYTHONPATH=. python examples/train_xor.py
+params: 105
+epoch    0  loss 0.897416
+epoch  200  loss 0.000004
+epoch  400  loss 0.000000
+...
+FINAL loss 0.000000
+  [0.0, 0.0] -> +0.000  (target 0.0)
+  [0.0, 1.0] -> +1.000  (target 1.0)
+  [1.0, 0.0] -> +1.000  (target 1.0)
+  [1.0, 1.0] -> +0.000  (target 0.0)
+
+PASS: loss < 0.01
+real	0m7.895s
+```
+The net solved XOR within 200 epochs. The whole run takes ~8 s for just 105
+parameters — a preview of why Week 3 moves from scalar `Value`s to NumPy tensors.
+
+**Gradient test — `tests/test_math.py`:** for `f(a, b) = (a·b + a²)·relu(b)` at
+a = −1.5, b = 2, I compare the analytic `a.grad` against a **central finite
+difference** `(f(a+h) − f(a−h)) / 2h` with h = 1e-6. They agree to 1e-4, so the
+engine's chain rule is right (and `a` is used twice, so this also tests `+=`).
+```text
+$ pytest -q
+.........                                                                [100%]
+9 passed in 1.25s
+```
+
+**Commit:** `feat: reverse-mode autograd engine + MLP learns XOR`
