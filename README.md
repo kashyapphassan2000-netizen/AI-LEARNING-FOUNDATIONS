@@ -341,3 +341,58 @@ because the MLP is exercised by `examples/train_xor.py`, not by a unit test, and
 first tests I'd add next.
 
 **Commit:** `docs: README + CI + coverage at 80%`
+
+### Day 7 (Sunday) — build, install-check, publish, write it up
+
+**Goal:** prove a stranger can install this, and write the post that goes in applications.
+
+1. **Build the distributions:**
+```text
+$ pip install build twine && python -m build
+Successfully built tiny_vec-0.1.0.tar.gz and tiny_vec-0.1.0-py3-none-any.whl
+```
+2. **Verify it installs in a fresh environment** (a brand-new venv, run from `/tmp`
+   so the repo's source folder can't be imported by accident):
+```text
+$ python -m venv /tmp/fresh && /tmp/fresh/bin/pip install dist/tiny_vec-0.1.0-py3-none-any.whl
+$ /tmp/fresh/bin/python -c 'from tiny_vec import Value; v=Value(2); (v*v).backward(); print(v.grad)'
+4.0
+```
+   4.0 is d(v²)/dv at v = 2 — the package works outside the repo.
+3. **Upload to TestPyPI** (the practice index). This needs *your* TestPyPI account and
+   API token, so it is the one step not executed here:
+```bash
+twine upload --repository testpypi dist/*
+pip install -i https://test.pypi.org/simple/ tiny-vec
+```
+4. **Blog post:** [`docs/blog.md`](docs/blog.md) — "I built tiny NumPy and learned why
+   NumPy is fast" (~370 words): what I built, the 700x speed gap and why, and the
+   Strassen-crossover surprise.
+
+**Commit:** `docs: blog post + release build verified`
+
+---
+
+## Done check — Week 1
+
+- [x] 7 day-by-day commits (scaffold → Vector → Matrix → Strassen → autograd → SVD/PCA → packaging)
+- [x] `pytest` green: 11 passed; coverage 80%
+- [x] wheel builds and installs cleanly in a fresh venv
+- [x] README has the benchmark tables and the CI badge
+- [ ] TestPyPI upload (needs your token — command above)
+
+## If something breaks
+
+- **`ModuleNotFoundError: No module named 'tiny_vec'`** — run from the repo root (pytest's
+  `pythonpath = ["."]` handles tests); for scripts use `PYTHONPATH=. python examples/…` or `pip install -e .`.
+- **Strassen slightly off from NumPy** — compare with `np.allclose(..., atol=1e-6)`, never `==`.
+- **XOR loss stuck at 0.25** — the net is predicting 0.5 everywhere: lower lr, keep the hidden layer, seed the RNG.
+- **Power iteration gives the wrong vector** — it only finds the dominant one; later components need deflation.
+
+## What I can now answer in an interview
+
+- Implement dot product / matmul / transpose from memory.
+- Why NumPy is ~700x faster than pure Python — measured, not memorized.
+- Strassen's 7-multiply trick and why the real crossover is later than the textbook's.
+- Reverse-mode autodiff: graph, topological sort, chain rule, gradient accumulation.
+- SVD via power iteration + deflation; PCA as the directions of maximum variance.
