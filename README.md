@@ -235,3 +235,49 @@ $ pytest -q
 ```
 
 **Commit:** `feat: reverse-mode autograd engine + MLP learns XOR`
+
+### Day 5 (Friday) — SVD by power iteration + PCA on iris
+
+**Goal:** singular value decomposition without calling a library SVD, then PCA on top of it.
+
+**The idea:** the right singular vectors of A are the eigenvectors of the Gram matrix
+AᵀA, and its eigenvalues are the *squared* singular values. So:
+1. **Power iteration** (`power_iteration`): start from a random unit vector `b`, repeat
+   `b ← normalize(M·b)`. Each multiply amplifies the component along the dominant
+   eigenvector more than the others, so `b` converges to it. The eigenvalue is the
+   Rayleigh quotient `bᵀMb`; I stop when it changes by less than 1e-12.
+2. **Deflation** (inside `svd`): after finding (λ, v), subtract it out —
+   `G ← G − λ·v·vᵀ` — so the *next* power iteration finds the next-largest component.
+3. **σ = √λ**, and the left singular vectors come from `u = A·v / σ` (guarding σ ≈ 0).
+4. **PCA** (`pca`): centre each column (subtract the mean), run `svd` on the centred
+   data, and the scores are `U·S` (equivalently `X_c·V`).
+
+**What I wrote:** `tiny_vec/linalg.py` (`_matvec`, `_transpose`, `_gram`,
+`_normalize`, `power_iteration`, `svd`, `pca`) and `examples/pca_iris.py`, which
+projects the 150×4 iris data to 2-D with my PCA and with scikit-learn's PCA side by
+side, and saves the plot.
+
+```text
+$ PYTHONPATH=. python examples/pca_iris.py
+wrote docs/iris_pca.png
+PC1 captures 94.6% of the top-2 variance
+```
+
+![iris PCA, mine vs scikit-learn](docs/iris_pca.png)
+
+The two panels are identical. I didn't trust my eyes, so I also measured it: after
+aligning signs (an eigenvector's sign is arbitrary, so a flipped axis would be fine),
+the largest difference between my scores and scikit-learn's is **3.3e-10 on PC1** and
+**5.0e-08 on PC2**. Cross-check: sklearn's explained-variance ratio is
+[0.9246, 0.0531] → 0.9246 / (0.9246 + 0.0531) = 94.6%, the same number my script printed.
+
+**Tests added (`tests/test_math.py`):**
+- power iteration on `diag(2, 1)` returns λ = 2;
+- my singular values of a random 5×3 matrix match `np.linalg.svd` to 1e-4.
+```text
+$ pytest -q
+...........                                                              [100%]
+11 passed in 1.15s
+```
+
+**Commit:** `feat: SVD via power iteration + PCA on iris with plot`
