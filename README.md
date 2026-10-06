@@ -6,7 +6,31 @@ A `Vector`, a `Matrix` with naive and Strassen matmul, a reverse-mode autograd
 engine that trains an MLP on XOR, and SVD-by-power-iteration + PCA — all in pure
 Python. NumPy appears **only in the tests**, as the oracle I check my math against.
 
+[![ci](https://github.com/kashyapphassan2000-netizen/tiny-vec/actions/workflows/ci.yml/badge.svg)](https://github.com/kashyapphassan2000-netizen/tiny-vec/actions/workflows/ci.yml)
+
 Stack: Python 3.10+, NumPy (tests only), pytest, hypothesis, GitHub Actions. Cost: $0.
+
+## Quickstart
+
+```bash
+pip install -e ".[dev]"
+pytest --cov=tiny_vec                                    # 11 tests, 80% coverage
+python examples/train_xor.py                             # autograd learns XOR
+python examples/pca_iris.py                              # PCA plot -> docs/iris_pca.png
+python bench/matmul.py --sizes 128,256,512 --leaf 32     # naive vs Strassen
+python -c 'from tiny_vec import Value; v=Value(2); (v*v).backward(); print(v.grad)'  # 4.0
+```
+
+## Headline results (measured, not copied)
+
+| what | result |
+|---|---|
+| naive matmul vs NumPy, n=128 | NumPy **~700x faster** (0.10 s vs 0.00014 s) |
+| Strassen vs naive | within noise at n=128; Strassen wins from **n≈256**; **1.65x** faster at n=512 |
+| XOR, MLP(2,[8,8,1]), SGD lr=0.05 | loss 0.897 → **0.000004** by epoch 200 |
+| my PCA vs scikit-learn on iris | max abs difference **3.3e-10** (PC1), **5.0e-08** (PC2) |
+| tests / coverage | **11 passed**, **80%** line coverage |
+
 
 ---
 
@@ -281,3 +305,39 @@ $ pytest -q
 ```
 
 **Commit:** `feat: SVD via power iteration + PCA on iris with plot`
+
+### Day 6 (Saturday) — package it: public API, pyproject, CI, coverage
+
+**Goal:** turn a folder of scripts into a real, installable, tested package.
+
+1. **Public API — `tiny_vec/__init__.py`:** re-exports `Vector, Matrix, Value, Neuron,
+   Layer, MLP, power_iteration, svd, pca`, sets `__version__ = "0.1.0"` and `__all__`.
+   This is what makes `from tiny_vec import Value` work for a user.
+2. **`pyproject.toml`:** zero runtime dependencies (the library is pure Python); NumPy,
+   pytest, hypothesis, scikit-learn and matplotlib live in the `dev` extra. Built with
+   `hatchling`. `[tool.pytest.ini_options] pythonpath = ["."]` lets tests import the
+   package from the repo root without installing it.
+3. **CI — `.github/workflows/ci.yml`:** on every push to `main` and every PR, GitHub
+   Actions installs `.[dev]` and runs the tests with coverage on Python **3.10, 3.11
+   and 3.12**.
+4. **Coverage run:**
+```text
+$ pytest --cov=tiny_vec --cov-report=term-missing
+Name                   Stmts   Miss  Cover   Missing
+----------------------------------------------------
+tiny_vec/__init__.py       7      0   100%
+tiny_vec/engine.py        83     20    76%   24, 65-71, 74-80, 101, 104, 107, 110, 113, 116, 119
+tiny_vec/linalg.py        59      6    90%   87-93
+tiny_vec/matrix.py        98      9    91%   23, 32, 36, 39, 42, 56, 60, 66, 77
+tiny_vec/nn.py            38     19    50%   15, 18-19, 24-26, 29-30, 33, 38, 41-42, 45, 50-51, 57-59, 62
+tiny_vec/vector.py        48     14    71%   25, 28, 31, 38, 51, 56, 65-67, 70-73, 76
+----------------------------------------------------
+TOTAL                    333     68    80%
+11 passed in 8.15s
+```
+**Honest read of that table:** 80% overall hits the target, but `nn.py` is only 50%
+because the MLP is exercised by `examples/train_xor.py`, not by a unit test, and
+`tanh`/`exp`/division in `engine.py` are not gradient-checked yet. Those are the
+first tests I'd add next.
+
+**Commit:** `docs: README + CI + coverage at 80%`
