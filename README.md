@@ -7,7 +7,32 @@ slow), then a **NumPy tensor** engine (every node is a whole array — same math
 of magnitude faster). On top: Linear layers, an MLP, Adam, a fused
 softmax-cross-entropy, gradient checks, a real MNIST run, and a Graphviz visualizer.
 
+[![ci](https://github.com/kashyapphassan2000-netizen/micrograd-fast/actions/workflows/ci.yml/badge.svg)](https://github.com/kashyapphassan2000-netizen/micrograd-fast/actions/workflows/ci.yml)
+
 Stack: Python 3.12, NumPy, scikit-learn (data loading), matplotlib, pytest, Graphviz. Cost: $0.
+
+## Quickstart
+
+```bash
+pip install -e ".[dev]"
+pytest -q                                              # gradient checks
+python examples/train_mnist.py                         # real MNIST (downloads once)
+python examples/train_digits.py                        # offline 8x8 digits
+python examples/bench_speedup.py                       # scalar vs tensor engine
+python examples/visualize.py | dot -Tpng -o docs/graph.png
+```
+
+## Headline results (measured)
+
+| what | result |
+|---|---|
+| **MNIST**, MLP 784-128-10, Adam, 3 epochs | **96.85% test accuracy in 6.0 s** (target ≥95% in <30 s) |
+| offline 8×8 digits, MLP 64-128-10 | 97.33% in 0.30 s |
+| scalar `Value` vs NumPy `Tensor`, same problem | **~410x** cold single run, **~4200x** warm best-of-50 |
+| gradient checks vs finite differences | 3/3 pass at 1e-5; deliberately injected bugs are caught |
+
+![loss curve](docs/loss_curve.png)
+
 
 ---
 
@@ -243,3 +268,45 @@ to left for the backward pass: the grads in the boxes — **−3 for a, 2 for b,
 — are the exact numbers I derived by hand on Monday.
 
 **Commit:** `feat: Graphviz computation-graph visualizer`
+
+### Day 7 (Sunday) — README, CI, blog post, release tag
+
+1. **README:** quickstart, the results table, the loss curve, and the graph, all at
+   the top, with this day-by-day log underneath.
+2. **CI — `.github/workflows/ci.yml`:** on Python 3.10/3.11/3.12, run the gradient
+   checks, train on the offline digits set, and run the speedup benchmark. Real MNIST
+   is not in CI on purpose: it downloads ~50 MB from OpenML and would make CI flaky
+   for reasons that have nothing to do with my code.
+3. **Blog post:** [`docs/blog.md`](docs/blog.md) — "MNIST in 6 seconds with an
+   autograd engine I wrote myself".
+4. **Tag the release:** `git tag v0.1.0 && git push --tags`.
+5. **Loom recording** (1 minute: run `train_mnist.py`, watch the accuracy climb) is
+   something you record yourself; it can't be produced from here.
+
+**Commit:** `docs: README results, CI, blog post` → tagged **v0.1.0**
+
+---
+
+## Done check — Week 3
+
+- [x] `pytest` shows the gradient checks passing
+- [x] `python examples/train_mnist.py` prints ≥95% (96.85%) in <30 s (6.0 s), then PASS
+- [x] `docs/graph.png` and `docs/loss_curve.png` exist and are in the README
+- [x] ~7 day-by-day commits; `v0.1.0` tagged
+- [ ] 1-minute Loom (record it yourself)
+
+## If something breaks
+
+- **Gradient check fails** — almost always a `=` that should be `+=`, or a wrong local derivative.
+- **Loss is `nan`** — make sure softmax subtracts the row max before `exp`; lower the lr.
+- **Accuracy stuck near 10%** — pixels not scaled to [0, 1], relu after the final layer, or a missing `zero_grad()`.
+- **Training over 30 s** — you're looping in Python; one matmul per layer per batch is the point.
+- **MNIST won't download** — use `examples/train_digits.py` (fully offline).
+
+## What I can now answer in an interview
+
+- Derive reverse-mode autodiff: graph, topological sort, local chain rule.
+- Why a value used twice must sum its gradients — and what breaks if it doesn't (I broke it on purpose).
+- Why vectorized autograd is 400–4000x faster than scalar, and why the number depends on how you time it.
+- Softmax-cross-entropy's gradient is "predicted minus actual", and why fusing them is more stable.
+- Adam: momentum, variance, bias correction, and why its first step is exactly `lr`.
