@@ -104,3 +104,36 @@ problem size, because the scalar cost is per number while NumPy does the arithme
 in compiled code.
 
 **Commit:** `feat: NumPy-backed Tensor engine + fused softmax-cross-entropy`
+
+### Day 3 (Wednesday) — layers, the MLP, and Adam (`micrograd_fast/nn.py`)
+
+**`Linear`** is `y = x @ W + b`. Weights use **He initialization** —
+`N(0, 1) · sqrt(2 / fan_in)` — because relu zeroes about half its inputs, and the
+factor 2 compensates so activations don't shrink layer after layer.
+
+**`MLP(sizes)`** stacks `Linear` layers with relu between them but **not after the
+last one**: the final layer outputs raw logits for softmax. `zero_grad()` resets
+every parameter's gradient (otherwise gradients from batch t leak into batch t+1,
+because every op uses `+=`).
+
+**`Adam`** keeps two running averages per parameter: momentum
+`m = β₁m + (1−β₁)g` and variance `v = β₂v + (1−β₂)g²`, bias-corrects both (they start
+at 0, so early on they are too small; dividing by `1 − βᵗ` fixes that), and updates
+`w −= lr · m̂ / (√v̂ + ε)`.
+
+**Sanity checks:**
+```text
+params: 101770                     <- 784*128 + 128 + 128*10 + 10 for MLP([784,128,10])
+hidden pre-relu std 0.783          <- He init keeps activations O(1) on [0,1] pixel input
+grad   1000.0: first Adam step moved weight by 0.001000
+grad    0.001: first Adam step moved weight by 0.001000
+```
+The last two lines show what makes Adam useful: on step 1, `m̂/√v̂ = g/|g| = ±1`,
+so the step is exactly `lr` **whether the gradient is 1000 or 0.001**. Step size is
+set by the learning rate, not by the raw scale of the gradient — so one `lr = 1e-3`
+works for every layer.
+
+**Public API — `micrograd_fast/__init__.py`:** `Value, Tensor, softmax_cross_entropy,
+Linear, MLP, Adam`, `__version__ = "0.1.0"`.
+
+**Commit:** `feat: Linear, MLP, Adam optimizer`
