@@ -58,3 +58,43 @@ so that retrieval faces real ambiguity instead of a toy where every query has on
 obvious keyword.
 
 **Commit:** `feat: original control-theory corpus (10 notes)`
+
+### Day 2 (Tuesday) — chunking (`kalman_rag/retrieve.py`, part 1)
+
+**Goal:** split documents into pieces small enough to embed and retrieve precisely.
+
+You can't embed a whole textbook as one vector: one vector for 300 pages averages
+every topic into mush. The choices:
+
+| strategy | what it does | trade-off |
+|---|---|---|
+| fixed-size | every N words | simple; can cut mid-idea |
+| sentence / semantic | split on meaning boundaries | cleaner; more work |
+| overlap (10–20%) | neighbouring chunks share edge text | nothing lost at a cut; some duplication |
+
+**What I wrote:** a `Chunk` dataclass (`text, source, page` — the citation travels
+with the text), and `chunk_documents(corpus, max_words=60, overlap=12)`: documents of
+≤ 60 words stay whole; longer ones are cut into 60-word windows that advance by
+48 words, so consecutive chunks share 12 words (20%). Plus `_tokenize()`, a
+lowercase alphanumeric tokenizer for BM25 tomorrow.
+
+```text
+10 docs -> 17 chunks
+  [notes/kalman_basics p.1] 58 words: The Kalman filter is a recursive estimator for lin...
+  [notes/kalman_gain p.2] 60 words: The Kalman gain determines how much the measuremen...
+  [notes/kalman_gain p.2] 14 words: trusts the model prediction. Deriving the Kalman g...
+  [notes/state_space p.3] 60 words: A discrete-time state-space model writes the next ...
+  [notes/state_space p.3] 14 words: Kalman filter's predict step uses A and B, and its...
+  ...
+  [notes/stability p.10] 51 words: A continuous-time linear system is asymptotically ...
+```
+
+**What I noticed:** my notes are 51–66 words, just over the 60-word window, so
+each long note produces a **tiny 14–18-word tail chunk that is mostly overlap** (12
+of its 14 words are repeated from the previous chunk). That's harmless for retrieval
+quality here (the tail still carries the right citation), but it means the same note
+can occupy two of the top-5 slots. On a real corpus I'd merge tails shorter than
+~half a window into the previous chunk. I kept the guide's settings so the numbers
+are comparable, and wrote the issue down instead.
+
+**Commit:** `feat: overlapping word-window chunker`
