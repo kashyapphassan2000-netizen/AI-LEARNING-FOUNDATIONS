@@ -150,3 +150,55 @@ bytes. So any byte sequence can be encoded and the concatenation on decode gives
 exact original bytes back.
 
 **Commit:** `test: round-trip on en/hi/ta + unseen text`
+
+### Day 4 (Thursday) — PyO3 bindings + build the Python wheel
+
+**Goal:** Rust speed behind a normal Python API: `import blazetok`.
+
+**`src/py.rs`** wraps the core type: `#[pyclass(name = "Tokenizer")] struct PyTokenizer
+{ inner: CoreTokenizer }` and a `#[pymethods]` block whose methods (`new`, `train`,
+`encode`, `decode`, `vocab_size`) just forward to the Rust tokenizer. PyO3 converts
+types at the boundary for me: Python `str` → `&str`, Python `list[int]` →
+`Vec<u32>` and back. `#[pymodule] fn blazetok` registers the class. The file is only
+compiled with `--features python` (`#[cfg(feature = "python")] mod py;` at the end of
+`lib.rs`), so `cargo test` never needs Python.
+
+**`pyproject.toml`** tells pip/maturin how to build: `build-backend = "maturin"`, and
+`[tool.maturin] features = ["python"]` switches the bindings on.
+
+**Build + install:**
+```text
+$ maturin build --release
+warning: non-local `impl` definition ... the attribute macro `pymethods` may come from an old version of the `pyo3_macros` crate
+    Finished `release` profile [optimized] target(s) in 10.53s
+📦 Built wheel for CPython 3.12 to target/wheels/blazetok-0.1.0-cp312-cp312-manylinux_2_34_x86_64.whl
+$ pip install target/wheels/*.whl --force-reinstall
+```
+The one warning is a known lint: PyO3 0.20's macros (locked at 0.20.3) predate the
+`non_local_definitions` lint in newer rustc. It is harmless; upgrading to PyO3 ≥ 0.21
+silences it but changes the binding API (`Bound<PyModule>`), so I kept the version
+the guide pins.
+
+**Two snags and how I fixed them:**
+1. PyO3 0.20 only supports CPython ≤ 3.12 → I build inside a 3.12 venv (see Day 0).
+2. My first `pip install` failed with *"is not a supported wheel on this platform"* —
+   `pip` on my PATH belonged to the system Python 3.13, not the 3.12 venv the wheel was
+   built for (`cp312`). Installing with the venv's own installer fixed it. Lesson:
+   when a wheel "isn't supported", check *which* interpreter's pip you're running.
+
+**Verify from Python** (run from `/tmp`, so it imports the installed wheel, not the source):
+```text
+>>> t = blazetok.Tokenizer(); t.train('the quick brown fox '*200, 400)
+vocab_size 282
+the quick brown fox -> 1 tokens [273] roundtrip True
+>>> # trained on the Wednesday test corpus instead:
+corpus-trained vocab_size 338
+नमस्ते दुनिया 37 bytes -> 7 tokens, roundtrip True
+வணக்கம் உலகம் 37 bytes -> 5 tokens, roundtrip True
+```
+Two things worth noticing: (1) on the repetitive text, training **stopped at 282**,
+not 400 — once the whole phrase is one token there are no pairs left that occur
+twice, so the `count < 2` early-exit fires; (2) on Indic text BPE already turns 37
+UTF-8 bytes into 5–7 tokens after a tiny amount of training. That's the Friday story.
+
+**Commit:** `feat: PyO3 bindings + maturin build, importable from Python`
