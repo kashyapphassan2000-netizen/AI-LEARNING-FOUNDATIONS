@@ -137,3 +137,39 @@ works for every layer.
 Linear, MLP, Adam`, `__version__ = "0.1.0"`.
 
 **Commit:** `feat: Linear, MLP, Adam optimizer`
+
+### Day 4 (Thursday) — prove the gradients are correct (`tests/test_grad.py`)
+
+**Goal:** never trust an autograd engine you haven't gradient-checked.
+
+**Method:** `numeric_grad(f, x)` nudges each entry of `x` by ±h (h = 1e-6), re-runs the
+forward pass, and estimates the derivative as `(f(x+h) − f(x−h)) / 2h` (central
+difference: error O(h²) instead of O(h)). If backprop's analytic gradient matches
+this to 1e-5, the engine is right.
+
+| test | what it covers |
+|---|---|
+| `test_matmul_add_relu_gradients` | `A @ B + b`, relu, sum — matmul backward **and** bias unbroadcasting in one graph |
+| `test_softmax_cross_entropy_gradient` | the fused op's "predicted minus actual" gradient |
+| `test_mlp_forward_shape` | `MLP([8,16,3])` maps a (10, 8) batch to (10, 3) |
+
+```text
+$ pytest -q
+...                                                                      [100%]
+3 passed in 0.22s
+```
+
+**Do the tests catch real bugs? I checked by breaking the engine on a scratch copy:**
+- Deleted the `d /= n` line in the softmax backward (a classic mistake) →
+  `1 failed, 2 passed`. The gradient check caught it.
+- Changed matmul's `+=` to `=` and used `A` in two matmuls:
+  ```text
+  with '=' bug, A.grad = [[2.0, 2.0], [2.0, 2.0]] (correct is all 4.0)
+  ```
+  The second path overwrote the first instead of adding to it — exactly the
+  "missing `+=`" failure the guide warns about, made visible.
+
+I also added `pyproject.toml` (`numpy` as the only runtime dependency, pytest
+`pythonpath = ["."]`) so `pytest` runs from the repo root.
+
+**Commit:** `test: gradient checks vs numerical gradients`
