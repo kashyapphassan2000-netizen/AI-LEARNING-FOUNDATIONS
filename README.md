@@ -61,3 +61,49 @@ behind a `python` feature, so `cargo test` stays pure-Rust and fast.
 hand-trace table and the tie-break gotcha.
 
 **Commit:** `docs: BPE algorithm notes + Cargo.toml`
+
+### Day 2 (Tuesday) — BPE training, encode, decode in Rust (`src/lib.rs`)
+
+**Goal:** the whole tokenizer in ~130 lines of Rust.
+
+**The data:** a `Tokenizer` struct with two `HashMap`s —
+`merges: (a, b) -> new_id` (the learned rules; a smaller id means "learned earlier")
+and `vocab: id -> Vec<u8>` (what bytes each token expands to). `new()` seeds `vocab`
+with the 256 single bytes.
+
+**The three functions that *are* the algorithm:**
+- `pair_counts(&[u32])` slides a window of 2 over the ids (`ids.windows(2)`) and
+  counts each pair with `*counts.entry(pair).or_insert(0) += 1`.
+- `merge(ids, pair, new_id)` walks left to right; when it sees the pair it emits
+  `new_id` and skips 2, otherwise copies 1. `Vec::with_capacity(ids.len())` avoids
+  re-allocations because the output can only shrink.
+- `train(text, vocab_size)` loops `vocab_size − 256` times: count, pick the best pair
+  with `max_by(|a, b| a.1.cmp(b.1).then(b.0.cmp(a.0)))` — highest count, and on a tie
+  the *smaller* pair (the reversed `b.0.cmp(a.0)` makes the smaller pair compare as
+  "greater") — then merge, record the rule, and store the new token's bytes. It stops
+  early if the best pair occurs fewer than 2 times.
+
+**Encode / decode:**
+- `encode` starts from bytes and repeatedly applies the merge with the **lowest id**
+  among the pairs present. That replays training's order exactly, which is why the
+  same text always encodes the same way.
+- `decode` concatenates each id's bytes and converts with `String::from_utf8_lossy`.
+
+**Rust things that clicked:** `&[u32]` borrows a slice without copying;
+`self.vocab[&pair.0].clone()` copies because I need an owned `Vec` to extend;
+`match best { Some(x) => x, None => break }` handles "no pairs left" explicitly — the
+compiler will not let me forget that case.
+
+**Proving it matches my Monday hand-trace — `tests/hand_trace.rs`:** train on
+`lower lowest slow slowest` with 6 merges and assert the learned tokens are exactly
+`["lo", "low", "lowe", " s", "st", "lowest"]` and that the sentence encodes to 8 tokens.
+```text
+$ cargo build
+   Compiling blazetok v0.1.0
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.26s
+$ cargo test --test hand_trace
+test hand_trace_lower_lowest_slow_slowest ... ok
+test result: ok. 1 passed; 0 failed
+```
+
+**Commit:** `feat: BPE training, encode, decode in Rust`
