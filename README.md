@@ -267,3 +267,44 @@ Tamil 80 tokens (1.36 tok/char).
    testing on held-out text — that's the next step, not a claim I can make today.
 
 **Commit:** `bench: token efficiency vs tiktoken + offline baseline`
+
+### Day 6 (Saturday) — robustness: byte fallback, Unicode normalization, a training CLI
+
+**1. Byte fallback (already built in).** Training starts from all 256 bytes, so
+there is no input blazetok can't encode — `roundtrip_unseen_text` proves it with
+`☃`, `✓` and digits it never trained on. No extra code needed; the design gives it for free.
+
+**2. Unicode normalization — I found a real example in my own word bank.**
+The same visible text can have two different byte sequences. The Hindi word
+`पेड़` (tree) can be written with the precomposed letter `ड़` (U+095C) *or* as `ड` +
+nukta sign (U+0921 U+093C):
+```text
+look identical: पेड़ पेड़ | equal strings? False
+utf8 bytes: [224, 164, 170, 224, 165, 135, 224, 165, 156]
+        vs  [224, 164, 170, 224, 165, 135, 224, 164, 161, 224, 164, 188]
+after NFC equal? True ['0x92a', '0x947', '0x921', '0x93c']
+```
+Without normalization a tokenizer sees two different words (9 vs 12 bytes) and wastes
+vocabulary on both; worse, a user's query may not match the training form. Production
+tokenizers normalize to **NFC** before training and encoding. (Fun detail: U+095C is a
+Unicode *composition exclusion*, so NFC turns it into the **decomposed** pair.) Same
+story in Latin script: `café` is 5 bytes in NFC and 6 in NFD. For this week the fix
+is documented here; the stretch goal is calling the `unicode-normalization` crate at
+the top of `train` and `encode`.
+
+**3. `examples/train.rs` — a CLI to train on any text file.** Reads the corpus,
+trains to the requested vocab size, reports the size, and round-trips a sample.
+I generated a 144 KB mixed English/Hindi/Tamil corpus with the Friday word banks:
+```text
+$ cargo run --release --example train -- corpus.txt 4000
+corpus: 144224 bytes
+trained vocab size: 1841
+encode("the quick brown fox") -> 3 tokens
+roundtrip ok: true
+real	0m1.691s   (including compile)
+```
+Again training **stopped early at 1841**, not 4000: the corpus only contains ~70
+distinct words, so after ~1600 merges no pair appears twice. That early exit is a
+feature — it never invents useless tokens.
+
+**Commit:** `feat: NFC note + train CLI example`
