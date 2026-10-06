@@ -1,7 +1,7 @@
 import math
 import numpy as np
 from hypothesis import given, strategies as st
-from tiny_vec import Vector
+from tiny_vec import Vector, Matrix
 
 
 def test_vector_dot_matches_numpy():
@@ -28,3 +28,18 @@ def test_dot_is_commutative(xs, ys):
     n = min(len(xs), len(ys))
     a, b = Vector(xs[:n]), Vector(ys[:n])
     assert math.isclose(a.dot(b), b.dot(a), rel_tol=1e-9)
+
+
+def test_matmul_matches_numpy():
+    A = [[1.0, 2.0], [3.0, 4.0]]; B = [[5.0, 6.0], [7.0, 8.0]]
+    got = Matrix(A).matmul(Matrix(B)).to_list()
+    assert np.allclose(got, np.array(A) @ np.array(B))
+
+
+def test_transpose():
+    A = [[1, 2, 3], [4, 5, 6]]
+    assert Matrix(A).T.to_list() == np.array(A).T.tolist()
+
+
+def test_identity():
+    assert Matrix.identity(3).to_list() == np.eye(3).tolist()

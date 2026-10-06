@@ -67,3 +67,45 @@ $ pytest tests/test_core.py -q
 ```
 
 **Commit:** `feat: Vector with dot/norm + property tests`
+
+### Day 2 (Tuesday) — the `Matrix` class + naive matmul
+
+**Goal:** an honest, slow baseline. You cannot claim a speedup tomorrow without a
+correct slow version today.
+
+**What I wrote — `tiny_vec/matrix.py`:**
+- `Matrix` stores `List[List[float]]` plus `rows`/`cols`, and rejects ragged input
+  (`ValueError("ragged matrix…")`) in the constructor so a bad shape never gets far.
+- Constructors `identity(n)` and `zeros(r, c)`; plumbing (`__getitem__`, `__eq__`,
+  `__repr__`, `to_list`), `transpose()` and the `.T` property, elementwise `+`/`-`.
+- **Naive matmul**: the triple loop. One real trick: I transpose `other` once
+  (`bt = other.transpose().data`) so the inner loop zips *row with row* instead of
+  striding down a column — fewer index lookups, same O(n³). Hooked up to `@` via
+  `__matmul__ = matmul`.
+- The same file already contains the Strassen code (`strassen`, `_pad`, `_add`,
+  `_sub`, `_naive`, `_strassen`); I study and benchmark it on Day 3.
+
+**Benchmark vs NumPy (n = 128):**
+```text
+# first run, NumPy cold (includes BLAS warm-up):
+tiny-vec 0.099s  numpy 0.00043s  -> numpy 231x faster
+# after a NumPy warm-up call, three runs:
+tiny-vec 0.097s  numpy 0.00014s  -> numpy 707x faster
+tiny-vec 0.106s  numpy 0.00014s  -> numpy 751x faster
+tiny-vec 0.103s  numpy 0.00014s  -> numpy 746x faster
+```
+Lesson #1 of benchmarking: the first call is not representative — warm up, then
+repeat. **NumPy is ~700x faster** on this machine. Why: it calls an optimized BLAS
+written in C/assembly (SIMD, cache blocking, multithreading) over contiguous memory,
+while my loop pays Python interpreter overhead on every single multiply-add
+(boxing floats, dispatching `*` and `+`, iterating lists of pointers).
+
+**Tests added:** matmul vs `np.array(A) @ np.array(B)` with `np.allclose`, transpose
+vs `.T`, identity vs `np.eye`.
+```text
+$ pytest tests/test_core.py -q
+.......                                                                  [100%]
+7 passed in 0.45s
+```
+
+**Commit:** `feat: Matrix + naive matmul, benchmarked vs NumPy`
