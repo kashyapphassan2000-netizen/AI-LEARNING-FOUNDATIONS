@@ -366,7 +366,7 @@ twine upload --repository testpypi dist/*
 pip install -i https://test.pypi.org/simple/ tiny-vec
 ```
 4. **Blog post:** [`docs/blog.md`](docs/blog.md) — "I built tiny NumPy and learned why
-   NumPy is fast" (~370 words): what I built, the 700x speed gap and why, and the
+   NumPy is fast" (~330 words): what I built, the 700x speed gap and why, and the
    Strassen-crossover surprise.
 
 **Commit:** `docs: blog post + release build verified`
