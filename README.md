@@ -107,3 +107,46 @@ test result: ok. 1 passed; 0 failed
 ```
 
 **Commit:** `feat: BPE training, encode, decode in Rust`
+
+### Day 3 (Wednesday) — round-trip tests on English, Hindi, Tamil (`tests/roundtrip.rs`)
+
+**Goal:** prove the defining property of a tokenizer — `decode(encode(x)) == x` —
+for every script, including text the tokenizer never saw.
+
+**The corpus** mixes English, Hindi (Devanagari) and Tamil sentences. Indic scripts
+are where PDFs bite: fonts can reorder or substitute combining marks when you copy
+text out. Before trusting the literals I checked their Unicode code points — e.g.
+`नमस्ते` = NA, MA, SA, VIRAMA, TA, SIGN E and `வணக்கம்` = VA, NNA, KA, VIRAMA, KA,
+MA, VIRAMA — logical order, nothing mangled.
+
+**Six tests, each trains a 400-token vocabulary on the corpus:**
+| test | what it proves |
+|---|---|
+| `roundtrip_english` | `"the quick brown fox"` survives encode → decode |
+| `roundtrip_hindi` | `"नमस्ते दुनिया"` survives — 3-byte Devanagari characters are never split wrongly |
+| `roundtrip_tamil` | `"வணக்கம் உலகம்"` survives |
+| `roundtrip_unseen_text` | `"zany ☃ pangram 12345 ✓"` — emoji/symbols never seen in training still round-trip via **byte fallback** |
+| `training_grows_vocab` | vocab starts at exactly 256 and ends in (256, 400] |
+| `merges_reduce_token_count` | an English sentence encodes to fewer tokens than its raw byte count |
+
+```text
+$ cargo test
+     Running tests/hand_trace.rs
+test hand_trace_lower_lowest_slow_slowest ... ok
+test result: ok. 1 passed; 0 failed
+     Running tests/roundtrip.rs
+test roundtrip_hindi ... ok
+test roundtrip_english ... ok
+test roundtrip_tamil ... ok
+test merges_reduce_token_count ... ok
+test roundtrip_unseen_text ... ok
+test training_grows_vocab ... ok
+test result: ok. 6 passed; 0 failed
+```
+
+**Why byte-level can't lose information:** every token's expansion is a byte string,
+the 256 single bytes are always in the vocabulary, and merges only *concatenate*
+bytes. So any byte sequence can be encoded and the concatenation on decode gives the
+exact original bytes back.
+
+**Commit:** `test: round-trip on en/hi/ta + unseen text`
