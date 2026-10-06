@@ -219,3 +219,27 @@ digits 8x8: 1347 train / 450 test, test accuracy 0.9733 in 0.30s
 97.3% — same speed, close accuracy. I'm reporting the number I measured.)
 
 **Commit:** `feat: MNIST training to >=95% in <30s + loss curve`
+
+### Day 6 (Saturday) — the computation-graph visualizer
+
+**Goal:** *see* the graph that backprop walks.
+
+**`micrograd_fast/viz.py`:** `trace(root)` walks the graph from the output through
+`_prev` and collects every node and edge (same DFS as `backward`). `to_dot(root)`
+emits Graphviz DOT: each `Value` is a record box `data | grad`; each operation gets
+its own blue ellipse that points into the value it produced. Node ids are Python
+`id()`s, so two values with the same number are still distinct nodes.
+
+**`examples/visualize.py`** builds Monday's example `L = relu(a·b + c)`, calls
+`backward()`, and prints the DOT, which `dot` renders:
+```bash
+python examples/visualize.py | dot -Tpng -o docs/graph.png
+```
+
+![computation graph](docs/graph.png)
+
+Read it left to right for the forward pass (2 × −3 = −6, + 10 = 4, relu = 4) and right
+to left for the backward pass: the grads in the boxes — **−3 for a, 2 for b, 1 for c**
+— are the exact numbers I derived by hand on Monday.
+
+**Commit:** `feat: Graphviz computation-graph visualizer`
