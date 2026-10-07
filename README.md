@@ -98,3 +98,46 @@ can occupy two of the top-5 slots. On a real corpus I'd merge tails shorter than
 are comparable, and wrote the issue down instead.
 
 **Commit:** `feat: overlapping word-window chunker`
+
+### Day 3 (Wednesday) — the hybrid retriever: dense + BM25 + RRF
+
+**Goal:** find the right chunk two different ways and merge the two rankings.
+
+**Why two retrievers.** Dense embeddings capture *meaning* (paraphrases match), but
+they can blur rare exact terms. BM25 is keyword ranking done right: it rewards a
+chunk for containing the query words often (term frequency, saturating via `k1`),
+discounts words that appear everywhere (IDF, so "the" barely counts), and normalizes
+for length (`b`) so long chunks don't win by size. Each catches what the other misses.
+
+**What I wrote — `HybridRetriever`:**
+- **Dense:** `TfidfVectorizer` turns every chunk into a vector; a query is scored by
+  cosine similarity, `(a·b) / (|a||b|)`. TF-IDF is a stand-in for BGE-M3: different
+  vectors, *identical* mechanics (vectorize → cosine → rank).
+- **Lexical:** `BM25Okapi` over the same chunks, tokenized by `_tokenize`. Both
+  indexes are built from the **same list in the same order**, because the fusion step
+  joins them by index.
+- **Reciprocal Rank Fusion:** `score(chunk) = Σ 1 / (60 + rank)` over both rankings
+  (rank 0 = best). RRF only looks at ranks, so I never have to make a cosine score and
+  a BM25 score comparable. A chunk both retrievers like collects the most votes.
+- **`grounded_answer`:** offline stand-in for the LLM step. It prints exactly the
+  cited context the model would receive.
+
+```text
+Question: derive the Kalman gain
+
+Grounded context (what the LLM would cite):
+  [notes/kalman_gain p.2] (score 0.0333)
+     The Kalman gain determines how much the measurement corrects the prediction. ...
+  [notes/kalman_gain p.2] (score 0.0328)
+     trusts the model prediction. Deriving the Kalman gain is the core of the filter....
+  [notes/lqr p.7] (score 0.0323)
+     The linear quadratic regulator finds a feedback gain that minimizes a cost ...
+```
+
+**Checking the math against the scores:** the top chunk was rank 0 in *both* lists,
+so its score should be 1/60 + 1/60 = **0.03333** — the code gives 0.03333. The second
+score, 0.0328, is the Part-A worked example exactly: 1/(60+0) + 1/(60+2) = 0.03280
+(first in one retriever, third in the other). LQR comes third because it also talks
+about a "gain": a sensible near-miss.
+
+**Commit:** `feat: hybrid TF-IDF + BM25 retriever with RRF`

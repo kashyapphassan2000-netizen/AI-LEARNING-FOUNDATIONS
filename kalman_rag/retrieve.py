@@ -11,6 +11,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import List
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from rank_bm25 import BM25Okapi
 
 
 @dataclass
@@ -43,3 +47,50 @@ def chunk_documents(corpus, max_words: int = 60, overlap: int = 12) -> List[Chun
 
 def _tokenize(text: str) -> List[str]:
     return re.findall(r"[a-z0-9]+", text.lower())
+
+
+class HybridRetriever:
+    """Dense (TF-IDF cosine) + lexical (BM25), fused by Reciprocal Rank Fusion."""
+
+    def __init__(self, chunks: List[Chunk]):
+        self.chunks = chunks
+        texts = [c.text for c in chunks]
+        # dense: TF-IDF vectors (stand-in for BGE-M3 embeddings)
+        self.vectorizer = TfidfVectorizer()
+        self.matrix = self.vectorizer.fit_transform(texts)
+        # lexical: BM25 over tokenized text
+        self.bm25 = BM25Okapi([_tokenize(t) for t in texts])
+
+    def _dense_ranking(self, query: str) -> List[int]:
+        qv = self.vectorizer.transform([query])
+        scores = cosine_similarity(qv, self.matrix)[0]
+        return list(np.argsort(scores)[::-1])
+
+    def _lexical_ranking(self, query: str) -> List[int]:
+        scores = self.bm25.get_scores(_tokenize(query))
+        return list(np.argsort(scores)[::-1])
+
+    def retrieve(self, query: str, k: int = 5, rrf_k: int = 60):
+        """Reciprocal Rank Fusion: each retriever votes by 1/(rrf_k + rank)."""
+        dense = self._dense_ranking(query)
+        lexical = self._lexical_ranking(query)
+        fused = {}
+        for ranking in (dense, lexical):
+            for rank, idx in enumerate(ranking):
+                fused[idx] = fused.get(idx, 0.0) + 1.0 / (rrf_k + rank)
+        order = sorted(fused, key=lambda i: fused[i], reverse=True)[:k]
+        return [(self.chunks[i], fused[i]) for i in order]
+
+
+def grounded_answer(query: str, retrieved) -> str:
+    """A placeholder for the LLM step.
+
+    Production calls Claude with the retrieved chunks and asks for a cited
+    answer. Offline, we return the top chunks with their citations so you can
+    see exactly what would be fed to the model -- and verify it is grounded.
+    """
+    lines = [f"Question: {query}", "", "Grounded context (what the LLM would cite):"]
+    for chunk, score in retrieved:
+        lines.append(f"  [{chunk.source} p.{chunk.page}] (score {score:.4f})")
+        lines.append(f"     {chunk.text[:160]}...")
+    return "\n".join(lines)
