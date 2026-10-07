@@ -228,3 +228,74 @@ export ANTHROPIC_API_KEY=...  COHERE_API_KEY=...
 ```
 
 **Commit:** `feat: Cohere rerank + grounded, cited Claude answer (reference)`
+
+### Day 6 (Saturday) — the goldset eval + tests
+
+**Goal:** a number that tells me whether retrieval works, decided *before* I look at results.
+
+**`eval/goldset.py`:** 10 questions, each paired with the note that should answer
+it. I wrote the questions and gold labels first and did not edit them after seeing
+the output. For each question it prints whether the gold note is ranked #1, the gold
+note's rank, top-1 accuracy and **MRR** (mean reciprocal rank: 1 for rank 1, ½ for
+rank 2, …). I also added a second set of 5 **paraphrases**: questions phrased the way
+a user talks, sharing few words with the notes.
+
+```text
+$ PYTHONPATH=.:data python eval/goldset.py
+
+goldset (keyword-style questions)
+  OK   derive the Kalman gain                               -> notes/kalman_gain        (gold rank 1)
+  MISS two steps predict and update                         -> notes/state_space        (gold rank 2)
+  OK   state transition and measurement matrix              -> notes/state_space        (gold rank 1)
+  OK   reconstruct internal state from outputs              -> notes/observability      (gold rank 1)
+  OK   how to tune process noise and measurement noise      -> notes/noise_covariance   (gold rank 1)
+  OK   drive the system to any state with an input          -> notes/controllability    (gold rank 1)
+  OK   Riccati equation optimal feedback                    -> notes/lqr                (gold rank 1)
+  OK   integral windup and derivative noise                 -> notes/pid                (gold rank 1)
+  OK   nonlinear measurements Jacobian linearization        -> notes/ekf                (gold rank 1)
+  OK   eigenvalues inside the unit circle                   -> notes/stability          (gold rank 1)
+top-1 accuracy: 9/10 = 90%   MRR: 0.950
+
+paraphrase set (few shared words; hard for TF-IDF/BM25)
+  MISS how much should I trust the sensor versus the model? -> notes/noise_covariance   (gold rank 2)
+  OK   my estimate is too jumpy, what knob makes it smoothe -> notes/noise_covariance   (gold rank 1)
+  MISS can I figure out hidden variables just by watching t -> notes/ekf                (gold rank 4)
+  MISS my controller keeps overshooting the target          -> notes/lqr                (gold rank 2)
+  MISS will this system blow up or settle down?             -> notes/ekf                (gold rank 3)
+top-1 accuracy: 1/5 = 20%   MRR: 0.517
+```
+
+**Reading the results honestly:**
+1. **90% top-1 on the goldset.** The one miss is a real ambiguity, not noise: the
+   state-space note ends with "the predict step uses A and B, and its update step uses
+   H", so it legitimately matches "predict and update". The right note is still #2,
+   and a reranker plus a 5-chunk context would hand both to the LLM.
+2. **Hybrid did *not* beat BM25 here.** I ran each retriever alone:
+   ```text
+   dense (TF-IDF) only    goldset 9/10   paraphrases 1/5
+   lexical (BM25) only    goldset 10/10  paraphrases 1/5
+   hybrid RRF             goldset 9/10   paraphrases 1/5
+   ```
+   That contradicts the "hybrid beats either alone" claim, and the reason matters:
+   **TF-IDF is a word-matcher too**, so fusing it with BM25 adds no new kind of
+   signal. Hybrid pays off when the dense side is a *neural* embedding (BGE-M3) that
+   understands meaning. Offline, BM25 alone would be the better choice.
+3. **Paraphrases: 20%.** The gold note is usually in the top 2–4 (MRR 0.52), but
+   "how much should I trust the sensor?" doesn't share words with "the Kalman gain
+   … trusts the measurement", so word-matching misses it. This set is the benchmark
+   to re-run once BGE-M3 is swapped in.
+
+**`tests/test_retrieve.py` (4 tests):** chunk windows overlap by exactly 12 words and
+keep their citation; every RRF score equals `1/(60+rank_dense) + 1/(60+rank_bm25)`
+computed independently; the Kalman-gain question returns `notes/kalman_gain p.2`; and
+the grounded prompt carries citations plus the "ONLY the context" rule, with a fake
+Claude client round-tripping the answer.
+```text
+$ pytest -q
+....                                                                     [100%]
+4 passed in 1.31s
+```
+I also added `pyproject.toml` (core deps: numpy, scikit-learn, rank_bm25; extras:
+`dev`, `app`, `production`; pytest `pythonpath = [".", "data"]`).
+
+**Commit:** `feat: goldset eval (90% top-1) + paraphrase set + tests`

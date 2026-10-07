@@ -1,0 +1,24 @@
+[project]
+name = "kalman-rag"
+version = "0.1.0"
+description = "Hybrid RAG over control-theory notes with cited, grounded answers"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = ["numpy>=1.24", "scikit-learn>=1.3", "rank_bm25>=0.2"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+app = ["gradio>=4.0"]
+production = ["FlagEmbedding", "psycopg2-binary", "pgvector", "cohere>=5", "anthropic>=0.40"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["kalman_rag"]
+
+[tool.pytest.ini_options]
+pythonpath = [".", "data"]
+testpaths = ["tests"]
