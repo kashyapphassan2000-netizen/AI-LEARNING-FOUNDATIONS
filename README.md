@@ -10,7 +10,38 @@ The retrieval core runs fully offline (TF-IDF stands in for neural embeddings). 
 production pieces — BGE-M3 embeddings in pgvector, Cohere rerank, Claude answering —
 are included as reference code and need your API keys / a database.
 
+[![ci](https://github.com/kashyapphassan2000-netizen/kalman-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/kashyapphassan2000-netizen/kalman-rag/actions/workflows/ci.yml)
+
 Stack: Python 3.12, scikit-learn, rank_bm25, NumPy, Gradio; production: FlagEmbedding, pgvector, Cohere, Anthropic. Cost: $0 offline.
+
+```
+question ──┬─> TF-IDF / BGE-M3 cosine ──┐
+           └─> BM25 keyword ranking ────┴─> RRF fusion ─> (Cohere rerank) ─> Claude: cited answer
+```
+
+## Quickstart
+
+```bash
+pip install -e ".[dev,app]"
+pytest -q                                      # 4 tests
+PYTHONPATH=.:data python eval/goldset.py       # retrieval eval
+python app/app.py                              # Gradio UI on http://127.0.0.1:7860
+# production answer step (optional):
+pip install -e ".[production]" && export ANTHROPIC_API_KEY=... COHERE_API_KEY=...
+```
+
+## Headline results (measured offline)
+
+| metric | result |
+|---|---|
+| goldset top-1 (10 keyword-style questions) | **9/10 = 90%**, MRR 0.95 |
+| paraphrase set top-1 (5 user-style questions) | **1/5 = 20%**, MRR 0.52 ← the case neural embeddings must fix |
+| ablation: BM25 alone / TF-IDF alone / hybrid | 10/10 / 9/10 / 9/10: hybrid adds nothing while both sides are word-matchers |
+| tests | 4 passed |
+| Claude answer step | plumbing verified with fake clients; **not run live** (no keys here) |
+
+![kalman-rag app](docs/app.png)
+
 
 ---
 
@@ -299,3 +330,82 @@ I also added `pyproject.toml` (core deps: numpy, scikit-learn, rank_bm25; extras
 `dev`, `app`, `production`; pytest `pythonpath = [".", "data"]`).
 
 **Commit:** `feat: goldset eval (90% top-1) + paraphrase set + tests`
+
+### Day 7 (Sunday) — the Gradio UI, running for real
+
+**`app/app.py`:** a `gr.Interface` with one textbox in and two out ("Grounded context /
+answer" and "Sources"). It builds the retriever once at startup, and `ask()`
+retrieves the top 5 chunks. One change from the guide: its docstring says "with API keys
+set it shows Claude's grounded answer", but its code never calls Claude. Mine does:
+if `ANTHROPIC_API_KEY` is set, `ask()` sends the retrieved chunks through
+`kalman_rag.answer.answer`; otherwise it shows the cited context.
+
+**Run it:**
+```text
+$ python app/app.py
+* Running on local URL:  http://127.0.0.1:7860
+$ curl -s -o /dev/null -w "HTTP %{http_code}" http://127.0.0.1:7860/
+HTTP 200
+```
+I then drove the page with headless Chromium (Playwright): opened it, clicked
+**Submit** with the default question "derive the Kalman gain", waited for the result,
+and saved the screenshot at the top of this README. Sources returned:
+```text
+- [notes/kalman_gain p.2] (score 0.033)
+- [notes/kalman_gain p.2] (score 0.033)
+- [notes/lqr p.7] (score 0.032)
+- [notes/ekf p.9] (score 0.031)
+- [notes/ekf p.9] (score 0.031)
+```
+Note the duplicate `kalman_gain` and `ekf` rows: that's the short-tail-chunk issue
+I flagged on Tuesday, now visible to a user. Merging small tail chunks is the first fix.
+
+**CI — `.github/workflows/ci.yml`:** installs the package, runs the 4 tests and the goldset eval.
+
+**Deploy to a free Hugging Face Space** (needs your HF account/token, so not done here):
+```bash
+huggingface-cli upload <you>/kalman-rag . --repo-type=space
+```
+
+**Commit:** `feat: Gradio UI (verified in a browser) + CI`
+
+---
+
+## Production vs the offline build
+
+| stage | offline (verified here) | production (your machine) |
+|---|---|---|
+| dense vectors | TF-IDF (scikit-learn) | BGE-M3 1024-dim embeddings |
+| vector store | in-memory sparse matrix | pgvector in Postgres, HNSW index |
+| rerank | skipped (RRF order used) | Cohere cross-encoder, top-20 → top-5 |
+| answer | show cited context | Claude Haiku 4.5, grounded + cited |
+| chunking, BM25, RRF, eval | identical | identical |
+
+## Done check — Week 4
+
+- [x] pytest green (4 passed); goldset eval prints 90% top-1
+- [x] the Gradio app runs and shows cited sources for every query (screenshot above)
+- [ ] with keys: Claude returns grounded, cited answers; zero unsourced claims (needs your keys)
+- [x] README states the legal sourcing and the honest eval numbers, including the ablation and the paraphrase gap
+
+## Exercises to deepen it
+
+- Swap TF-IDF for BGE-M3 and re-run the **paraphrase set**; that's where the gain should show.
+- Merge tail chunks shorter than half a window into the previous chunk; re-run the eval.
+- Add a "no answer in context" test: ask an off-topic question live and confirm Claude declines.
+- Add a second corpus (PID tuning notes) and watch RRF combine evidence across both.
+
+## If something breaks
+
+- **Retrieval returns irrelevant chunks** — check chunk size, and that BM25 and TF-IDF are built over the *same* chunk list in the same order (RRF fuses by index).
+- **pgvector: operator `<=>` does not exist** — run `CREATE EXTENSION IF NOT EXISTS vector;`.
+- **Claude answer includes facts not in the context** — strengthen "use ONLY the context" and the "say you don't know" rule.
+- **BGE-M3 download fails** — needs internet on first run; the TF-IDF path needs no downloads.
+
+## What I can now answer in an interview
+
+- The RAG pipeline end to end, and why each stage exists.
+- Dense vs sparse retrieval, and when hybrid + RRF helps (and when it doesn't: I measured it adding nothing with two lexical retrievers).
+- Why a cross-encoder reranker is more accurate but only used on a shortlist.
+- How grounded prompting + citations suppress hallucination.
+- How to evaluate RAG honestly: labels fixed before results, MRR, ablations, a paraphrase set.
