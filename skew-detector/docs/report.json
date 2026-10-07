@@ -1,0 +1,132 @@
+{
+  "schema": [],
+  "ks": [
+    {
+      "column": "age",
+      "statistic": 0.281125,
+      "p_value": 4.464002219321698e-186,
+      "alpha": 0.0016666666666666668,
+      "drifted": true,
+      "extra": {}
+    },
+    {
+      "column": "credit_score",
+      "statistic": 0.03562500000000002,
+      "p_value": 0.0022781771659726065,
+      "alpha": 0.0016666666666666668,
+      "drifted": false,
+      "extra": {}
+    },
+    {
+      "column": "debt_ratio",
+      "statistic": 0.062,
+      "p_value": 2.434035432934362e-09,
+      "alpha": 0.0016666666666666668,
+      "drifted": true,
+      "extra": {}
+    },
+    {
+      "column": "default",
+      "statistic": 0.15275000000000005,
+      "p_value": 1.0652369232316451e-54,
+      "alpha": 0.0016666666666666668,
+      "drifted": true,
+      "extra": {}
+    },
+    {
+      "column": "income",
+      "statistic": 0.21762499999999996,
+      "p_value": 4.738728529914028e-111,
+      "alpha": 0.0016666666666666668,
+      "drifted": true,
+      "extra": {}
+    },
+    {
+      "column": "region",
+      "statistic": 0.016625,
+      "p_value": 0.4509064155268141,
+      "alpha": 0.0016666666666666668,
+      "drifted": false,
+      "extra": {}
+    }
+  ],
+  "psi": [
+    {
+      "column": "age",
+      "statistic": 0.45209572711534374,
+      "p_value": NaN,
+      "alpha": 0.25,
+      "drifted": true,
+      "extra": {
+        "warn": 0.1,
+        "fail": 0.25
+      }
+    },
+    {
+      "column": "credit_score",
+      "statistic": 0.005867400712358411,
+      "p_value": NaN,
+      "alpha": 0.25,
+      "drifted": false,
+      "extra": {
+        "warn": 0.1,
+        "fail": 0.25
+      }
+    },
+    {
+      "column": "debt_ratio",
+      "statistic": 0.02463245313917844,
+      "p_value": NaN,
+      "alpha": 0.25,
+      "drifted": false,
+      "extra": {
+        "warn": 0.1,
+        "fail": 0.25
+      }
+    },
+    {
+      "column": "default",
+      "statistic": 0.09500130507823051,
+      "p_value": NaN,
+      "alpha": 0.25,
+      "drifted": false,
+      "extra": {
+        "warn": 0.1,
+        "fail": 0.25
+      }
+    },
+    {
+      "column": "income",
+      "statistic": 0.2725794965177378,
+      "p_value": NaN,
+      "alpha": 0.25,
+      "drifted": true,
+      "extra": {
+        "warn": 0.1,
+        "fail": 0.25
+      }
+    },
+    {
+      "column": "region",
+      "statistic": 0.0012214104365011469,
+      "p_value": NaN,
+      "alpha": 0.25,
+      "drifted": false,
+      "extra": {
+        "warn": 0.1,
+        "fail": 0.25
+      }
+    }
+  ],
+  "label": {
+    "column": "default",
+    "statistic": 248.6813146757704,
+    "p_value": 5.034170893172986e-56,
+    "alpha": 0.01,
+    "drifted": true,
+    "extra": {
+      "train_prevalence": 0.47225,
+      "serve_prevalence": 0.625
+    }
+  }
+}
