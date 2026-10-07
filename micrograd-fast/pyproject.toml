@@ -1,0 +1,22 @@
+[project]
+name = "micrograd-fast"
+version = "0.1.0"
+description = "A tiny autograd engine (scalar + NumPy tensor) that trains MNIST on a CPU"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = ["numpy>=1.24"]
+
+[project.optional-dependencies]
+dev = ["pytest", "scikit-learn", "matplotlib", "pandas"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["micrograd_fast"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

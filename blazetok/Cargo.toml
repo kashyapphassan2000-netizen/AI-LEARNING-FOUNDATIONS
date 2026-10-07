@@ -1,0 +1,16 @@
+[package]
+name = "blazetok"
+version = "0.1.0"
+edition = "2021"
+description = "A byte-level BPE tokenizer in Rust, with Python bindings"
+license = "MIT"
+
+[lib]
+name = "blazetok"
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.20", features = ["extension-module"], optional = true }
+
+[features]
+python = ["dep:pyo3"]
