@@ -141,3 +141,41 @@ score, 0.0328, is the Part-A worked example exactly: 1/(60+0) + 1/(60+2) = 0.032
 about a "gain": a sensible near-miss.
 
 **Commit:** `feat: hybrid TF-IDF + BM25 retriever with RRF`
+
+### Day 4 (Thursday) — the production dense store: BGE-M3 + pgvector (`kalman_rag/embeddings.py`)
+
+**Goal:** the real dense retriever, with the same role TF-IDF plays offline.
+
+- **`embed_texts`** — BGE-M3 (`BAAI/bge-m3`) turns each chunk into a 1024-number
+  vector that encodes *meaning*, so "how much should I trust the sensor?" can land
+  near the Kalman-gain note even though they share almost no words. That's what
+  TF-IDF can't do.
+- **`create_table`** — enables the `vector` extension, creates
+  `chunks(source, page, body, embedding vector(1024))`, and adds an **HNSW index**
+  (`vector_cosine_ops`). I added the index line; the guide mentions HNSW but its code
+  never creates one, and without it pgvector does an exact scan of every row.
+- **`upsert_chunks`** — one row per chunk, keeping `source`/`page` for citations.
+- **`vector_search`** — `ORDER BY embedding <=> query LIMIT k`; `<=>` is cosine
+  **distance**, so `1 − distance` is reported as the similarity score.
+
+**Why HNSW (approximate nearest neighbour):** an exact search compares the query to
+every stored vector, which is linear in corpus size. HNSW builds a layered
+neighbour graph and searches greedily from a coarse top layer down to fine layers,
+touching a small fraction of the vectors for ~99% recall. For my 17 chunks a brute-force
+scan is instant; HNSW matters at hundreds of thousands of chunks.
+
+**What I could and couldn't verify here:** BGE-M3 is a multi-GB model download and
+pgvector needs a running Postgres, so this file is **reference code, not executed**.
+I did verify that it compiles and imports cleanly
+(`create_table, embed_texts, upsert_chunks, vector_search`), and re-checked the
+Part-A cosine example numerically: `cos(q,a) = 0.949`, `cos(q,b) = 0.949`. Because
+`retrieve.py` and this file both do "vectorize → cosine → rank", swapping TF-IDF for
+BGE-M3 doesn't touch BM25, RRF, or the eval.
+
+To run it yourself:
+```bash
+pip install FlagEmbedding psycopg2-binary pgvector
+docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=postgres pgvector/pgvector:pg16
+```
+
+**Commit:** `feat: production BGE-M3 + pgvector dense store (reference)`
