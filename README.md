@@ -179,3 +179,52 @@ docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=postgres pgvector/pgvector:pg16
 ```
 
 **Commit:** `feat: production BGE-M3 + pgvector dense store (reference)`
+
+### Day 5 (Friday) — rerank + grounded answer: Cohere + Claude (`kalman_rag/answer.py`)
+
+**Goal:** turn a ranked list of chunks into a short, cited answer that refuses to make things up.
+
+**1. Rerank (`rerank`).** First-stage retrieval uses *bi-encoders*: the query and each
+chunk are vectorized separately, so search is fast but approximate. A
+**cross-encoder** reranker (Cohere `rerank-english-v3.0`) reads the query and a chunk
+*together* and scores them jointly. It's more accurate and too slow for the whole
+corpus, so the pattern is: retrieve ~20 cheaply, rerank down to 5. I use Cohere SDK
+v7's `ClientV2.rerank(model, query, documents, top_n)` — I checked the installed
+SDK's signature instead of guessing it.
+
+**2. Grounded prompt (`GROUNDED_PROMPT`, `build_prompt`).** Every chunk goes into the
+prompt prefixed with its citation, `[notes/kalman_gain p.2] …`, and the instructions
+are: answer using **only** this context, cite every claim as `[source p.N]`, and say
+so if the context doesn't contain the answer.
+
+**3. Answer (`answer`).** One `messages.create` call to **Claude Haiku 4.5**
+(`claude-haiku-4-5`), the cheap, fast model the guide picks for this step. Two small
+changes from the guide's version: `max_tokens` 1024 instead of 600 (so a cited
+derivation isn't cut off mid-sentence), and the code checks `stop_reason` and joins
+only `text` blocks instead of assuming `content[0]` is text. `to_candidates()` adapts
+the retriever's `(Chunk, score)` tuples to the dicts this module uses.
+
+**How I verified it without API keys:** there are no Cohere/Anthropic credentials in
+this environment, so both functions accept an injected `client`. I ran the full path
+(real retriever → reranker → answer) with fake clients that record what they receive:
+```text
+reranked: [('notes/kalman_gain', 2), ('notes/kalman_gain', 2), ('notes/lqr', 7)]
+answer: The gain is ... [notes/kalman_gain p.2]
+model: claude-haiku-4-5 | max_tokens: 1024
+--- prompt sent ---
+You are a control-theory tutor. Answer the question using ONLY the context below. Cite every
+claim as [source p.N]. If the context does not contain the answer, say so -- never invent facts.
+
+Context:
+[notes/kalman_gain p.2] trusts the model prediction. Deriving the Kalman gain is the core of the filter.
+
+[notes/kalman_gain p.2] The Kalman gain determines how much the measurement corrects ...
+```
+That proves the plumbing: all 17 candidates reach the reranker, its order is
+respected, and the prompt carries every citation. It does **not** prove answer
+quality; that needs a live run with keys:
+```bash
+export ANTHROPIC_API_KEY=...  COHERE_API_KEY=...
+```
+
+**Commit:** `feat: Cohere rerank + grounded, cited Claude answer (reference)`
