@@ -111,3 +111,46 @@ with `to_dict()`, so the CLI can render it and the JSON exporter can dump it wit
 recomputing.
 
 **Commit:** `feat: KS + PSI + label-prevalence drift checks`
+
+### Day 6 (Saturday) — the CLI: Rich tables, HTML, JSON, and a CI exit code (`skew_detect/cli.py`)
+
+**Goal:** turn a library into a tool someone runs in a pipeline, not a notebook.
+
+- **Click** parses `skew-detect TRAIN SERVE [--alpha 0.01] [--bins 10] [--label COL]
+  [--out report.html] [--json-out report.json] [--fail-on-drift]`.
+- **Rich** renders one table per check (schema diff, KS, PSI, label prevalence), DRIFT in
+  red and ok in green. PSI has no p-value, so the code shows `n/a` using the
+  `x != x` NaN check.
+- **HTML report** for humans, **JSON** for machines (`default=str` so NaN p-values serialize).
+- **`--fail-on-drift`** makes it a CI gate: exit 1 if any schema `fail`, KS, PSI or
+  label check flags drift; exit 0 otherwise.
+
+**Three fixes to the guide's version:**
+1. The HTML template line was cut off in the PDF (`…{rows_schema or '<tr><td colspan=3>OK</td></tr>'` and
+   nothing after); I closed the table and finished the template.
+2. The HTML never showed the label-prevalence result even though it's computed; I added
+   that section, with train/serve rates.
+3. Column names come straight from user CSVs and were pasted into HTML unescaped, so a
+   column named `<script>…` would execute in whoever opens the report. They now go
+   through `html.escape`.
+
+**`pyproject.toml`** declares `[project.scripts] skew-detect = "skew_detect.cli:main"`,
+so `pip install -e .` puts a real command on the PATH:
+```text
+$ pip install -e . && skew-detect --help
+Usage: skew-detect [OPTIONS] TRAIN SERVE
+
+  Compare TRAIN and SERVE CSVs and produce a drift report.
+
+Options:
+  --alpha FLOAT                   significance level for KS/chi2  [default: 0.01]
+  --bins INTEGER                  PSI buckets  [default: 10]
+  --label TEXT                    label column for prevalence drift
+  --report [text|html]
+  --out TEXT                      path to write HTML report
+  --json-out TEXT                 path to write JSON for CI gates
+  --fail-on-drift / --no-fail-on-drift
+                                  exit 1 if any DRIFT is found (for CI)
+```
+
+**Commit:** `feat: CLI with text/HTML/JSON reports and CI exit code`
