@@ -1,0 +1,10 @@
+<!doctype html><html><head><meta charset="utf-8"><title>skew report</title>
+<style>body{font-family:system-ui;background:#0d1117;color:#c9d1d9;padding:24px}
+table{border-collapse:collapse;margin:12px 0}td,th{padding:6px 12px;border:1px solid #30363d}
+th{background:#1f6feb;color:#fff}h1,h2{color:#f0f6fc}</style></head>
+<body><h1>skew report</h1>
+<h2>schema</h2><table><tr><th>kind</th><th>column</th><th>detail</th></tr><tr><td colspan=3>OK</td></tr></table>
+<h2>KS (numeric)</h2><table><tr><th>column</th><th>D</th><th>p</th><th>status</th></tr><tr><td>age</td><td>0.2811</td><td>4.464e-186</td><td>DRIFT</td></tr><tr><td>credit_score</td><td>0.0356</td><td>0.002278</td><td>ok</td></tr><tr><td>debt_ratio</td><td>0.0620</td><td>2.434e-09</td><td>DRIFT</td></tr><tr><td>default</td><td>0.1528</td><td>1.065e-54</td><td>DRIFT</td></tr><tr><td>income</td><td>0.2176</td><td>4.739e-111</td><td>DRIFT</td></tr><tr><td>region</td><td>0.0166</td><td>0.4509</td><td>ok</td></tr></table>
+<h2>PSI (numeric)</h2><table><tr><th>column</th><th>PSI</th><th>status</th></tr><tr><td>age</td><td>0.4521</td><td>DRIFT</td></tr><tr><td>credit_score</td><td>0.0059</td><td>ok</td></tr><tr><td>debt_ratio</td><td>0.0246</td><td>ok</td></tr><tr><td>default</td><td>0.0950</td><td>ok</td></tr><tr><td>income</td><td>0.2726</td><td>DRIFT</td></tr><tr><td>region</td><td>0.0012</td><td>ok</td></tr></table>
+<h2>label prevalence (chi-squared)</h2><table><tr><th>column</th><th>chi2</th><th>p</th><th>train rate</th><th>serve rate</th><th>status</th></tr><tr><td>default</td><td>248.6813</td><td>5.034e-56</td><td>0.472</td><td>0.625</td><td>DRIFT</td></tr></table>
+</body></html>

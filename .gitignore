@@ -14,3 +14,4 @@ target/
 *.so
 .ipynb_checkpoints/
 .DS_Store
+data/*.csv

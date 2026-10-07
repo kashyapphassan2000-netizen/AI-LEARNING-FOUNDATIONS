@@ -8,7 +8,35 @@ correction, and the Population Stability Index), tests label-prevalence shift
 with chi-squared, renders a terminal report, writes HTML/JSON, and exits non-zero
 on drift so it can gate CI.
 
+[![ci](https://github.com/kashyapphassan2000-netizen/skew-detector/actions/workflows/ci.yml/badge.svg)](https://github.com/kashyapphassan2000-netizen/skew-detector/actions/workflows/ci.yml)
+
 Stack: Python 3.12, pandas, SciPy, NumPy, Click, Rich, pytest, matplotlib. Cost: $0.
+
+## Quickstart
+
+```bash
+pip install -e ".[dev]"
+pytest -q                                                    # 6 tests
+python examples/make_data.py                                 # known-drift pair + clean control pair
+skew-detect data/train.csv data/serve.csv --label default --out docs/report.html --json-out docs/report.json
+skew-detect data/train.csv data/serve.csv --fail-on-drift; echo "exit $?"   # 1 = drift
+```
+
+## Headline results (measured)
+
+| column | injected drift? | KS (Bonferroni) | PSI | chi² (label) | verdict |
+|---|---|---|---|---|---|
+| age | yes, mean 38 → 45 | DRIFT (D 0.281) | DRIFT (0.452) | | ✅ caught |
+| income | yes, ×1.30 | DRIFT (D 0.218) | DRIFT (0.273) | | ✅ caught |
+| debt_ratio | yes, mild | DRIFT (D 0.062) | ok (0.025) | | ✅ caught by KS only |
+| default (label) | yes, 47% → 62% | DRIFT | ok (0.095) | DRIFT (p 5e-56) | ✅ caught |
+| credit_score | no | ok (p 0.0023) | ok | | ✅ no false positive |
+| region | no | ok | ok | | ✅ no false positive |
+
+Clean control pair: **every check ok**. `--fail-on-drift`: **exit 1** on drift, **exit 0** on clean. Unit tests: **6/6**.
+
+![report](docs/report.png)
+
 
 ---
 
@@ -154,3 +182,136 @@ Options:
 ```
 
 **Commit:** `feat: CLI with text/HTML/JSON reports and CI exit code`
+
+### Day 7 (Sunday) — run it on data with known drift, with a control
+
+**Goal:** prove the detector catches what it should *and nothing it shouldn't*. A
+detector that flags everything is as useless as one that flags nothing.
+
+**`examples/make_data.py`** generates a loan-application dataset (seed 42) with drift I
+injected on purpose: **age** shifted older (mean 38 → 45), **income** inflated 30%,
+**debt_ratio** mildly shifted (Beta(2,5) → Beta(2.2,5)), the **default** rate pushed
+up, and **credit_score** and **region** left untouched. The guide runs a no-drift
+control pair (`train_clean.csv`/`serve_clean.csv`) but never generates it, so I added
+that: both sides drawn from the training distribution.
+```text
+wrote data/train.csv (8000, 6) default rate 0.472
+wrote data/serve.csv (4000, 6) default rate 0.625
+wrote data/train_clean.csv (8000, 6) default rate 0.484
+wrote data/serve_clean.csv (4000, 6) default rate 0.469
+```
+One discrepancy, reported as found: the guide's comments say the default rate moves
+"12% → 22%", but its own risk formula produces **47% → 62%**. The drift is real either
+way; I kept the formula and corrected the description.
+
+![train vs serve](docs/distributions.png)
+
+**Run it on the drifted pair:**
+```text
+$ skew-detect data/train.csv data/serve.csv --label default --out docs/report.html --json-out docs/report.json
+loaded train (8000, 6) serve (4000, 6)
+schema: OK -- columns and types match
+   Kolmogorov-Smirnov (Bonferroni-corrected)
+│ age          │ 0.2811 │ 4.464e-186 │ DRIFT  │
+│ credit_score │ 0.0356 │   0.002278 │ ok     │
+│ debt_ratio   │ 0.0620 │  2.434e-09 │ DRIFT  │
+│ default      │ 0.1528 │  1.065e-54 │ DRIFT  │
+│ income       │ 0.2176 │ 4.739e-111 │ DRIFT  │
+│ region       │ 0.0166 │     0.4509 │ ok     │
+         Population Stability Index
+│ age          │ 0.4521 │     n/a │ DRIFT  │
+│ credit_score │ 0.0059 │     n/a │ ok     │
+│ debt_ratio   │ 0.0246 │     n/a │ ok     │
+│ default      │ 0.0950 │     n/a │ ok     │
+│ income       │ 0.2726 │     n/a │ DRIFT  │
+│ region       │ 0.0012 │     n/a │ ok     │
+ Label prevalence (chi-squared) -- default
+│ default │ 248.6813 │ 5.034e-56 │ DRIFT  │
+wrote docs/report.html
+wrote docs/report.json
+```
+These numbers match the guide's published run digit for digit, which also confirms
+the data generator is reproducible.
+
+**What the table teaches:**
+- Every injected drift is caught; neither untouched column is flagged.
+- **credit_score has raw p = 0.0023.** A naive α = 0.01 would have flagged it: a false
+  alarm on a column I never touched. Against the Bonferroni threshold 0.01/6 = 0.00167
+  it correctly stays ok. That's the correction earning its keep on real output.
+- **debt_ratio: DRIFT by KS, ok by PSI (0.025).** The shift is small and spread
+  across the distribution; PSI's 10 coarse bins smooth it away while KS's CDF gap
+  sees it. Same for **default**: chi² p ≈ 5e-56 but PSI 0.095 sits just under the 0.10
+  line. This is why you run more than one test and read across them.
+
+**The control (no drift anywhere):**
+```text
+$ skew-detect data/train_clean.csv data/serve_clean.csv --label default
+schema: OK -- columns and types match
+KS:  age 0.1505 ok | credit_score 0.05594 ok | debt_ratio 0.5523 ok | default 0.6275 ok | income 0.5735 ok | region 1 ok
+PSI: age 0.0042 | credit_score 0.0062 | debt_ratio 0.0031 | default 0.0008 | income 0.0035 | region 0.0003  (all ok)
+chi2 default: 2.1863, p 0.1392 ok
+```
+**Zero false positives.**
+
+**CI gate via exit code:**
+```text
+drifted pair --fail-on-drift: exit 1
+clean pair   --fail-on-drift: exit 0
+```
+`.github/workflows/ci.yml` runs the 6 tests, regenerates both datasets, and asserts
+exactly that: the gate **must** fire on the drifted pair and **must** stay quiet on the
+clean one. Point the same command at the latest serving snapshot on a schedule and
+you have weekly drift CI.
+
+**HTML report:** rendered in headless Chromium to check it's well-formed: 4 tables,
+7 DRIFT cells (screenshot at the top). Generated CSVs are git-ignored: they're
+reproducible from the seed.
+
+**Tests — `tests/test_drift.py` (6):** clean schema has no issues; drop/add/retype are all
+detected; KS catches a 1.5σ shift and leaves an unchanged column alone; KS gives no
+false positive on a clean pair; PSI < 0.1 for no shift and > 0.25 for a 2σ shift;
+chi² detects a 30% → 55% prevalence shift.
+```text
+$ pytest -q
+......                                                                   [100%]
+6 passed in 1.14s
+```
+
+**Commit:** `feat: known-drift dataset + clean control, CI gate, tests`
+
+---
+
+## Done check — Week 5
+
+- [x] 6/6 unit tests pass
+- [x] catches every injected drift (age, income, debt_ratio, default) and false-positives on neither control (credit_score, region)
+- [x] `--fail-on-drift` returns exit 1 on drift, 0 on clean, enforced in CI
+- [x] HTML and JSON reports written; `pip install -e .` exposes `skew-detect`
+
+## Known limitations (next fixes)
+
+- When `--label default` is given, the label column still also goes through KS and PSI.
+  KS on a 0/1 column isn't meaningful; the label should be excluded from the numeric tests.
+- Categorical features aren't tested yet (only numeric KS/PSI); a per-column chi² would cover them.
+- Bonferroni is conservative; with hundreds of columns, Benjamini-Hochberg (FDR) keeps more power.
+
+## Exercises to deepen it
+
+- Add Wasserstein (Earth Mover's) distance and compare its sensitivity with KS and PSI.
+- Add train/serve histograms for flagged columns to the HTML report.
+- Subgroup drift: split serve by region and re-run; drift in one segment can hide in the global view.
+
+## If something breaks
+
+- **Every column flags as drifted** — no Bonferroni, or α too high.
+- **Nothing flags though a plot shows drift** — too few rows (KS needs hundreds) or a constant column.
+- **PSI is inf/nan** — an empty bin; the ε = 1e-6 floor must be in place.
+- **chi² warns about expected frequency** — a rare class; the +1 smoothing helps, or use Fisher's exact test.
+
+## What I can now answer in an interview
+
+- The five kinds of drift, and which ones a CSV-vs-CSV tool can catch.
+- How KS works (largest CDF gap) and how PSI works (binned log-ratio sum), with thresholds.
+- Why one statistic is never enough: debt_ratio was caught by KS and missed by PSI.
+- Why multiple-comparison correction matters: credit_score's p = 0.0023 would have been a false alarm.
+- How to turn statistics into MLOps: exit codes for CI, JSON for gates, HTML for humans.

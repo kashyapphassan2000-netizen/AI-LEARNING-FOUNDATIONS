@@ -1,0 +1,26 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Unit tests
+        run: pytest -q
+      - name: Generate known-drift and clean data
+        run: python examples/make_data.py
+      - name: The gate must fire on drift and stay quiet on clean data
+        run: |
+          if skew-detect data/train.csv data/serve.csv --label default --fail-on-drift; then
+            echo "expected exit 1 on drifted data"; exit 1; fi
+          skew-detect data/train_clean.csv data/serve_clean.csv --label default --fail-on-drift
